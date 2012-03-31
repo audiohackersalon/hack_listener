@@ -1,48 +1,51 @@
 s = Server.default;
 s.boot;
 
-(
-~variables.lastOnset = 0;
-
 SynthDef(\hack_listener, {
-	var in = SoundIn.ar(0, 0.2);
-	var in_fft = FFT(LocalBuf(2048), in);
-	var onsets = Onsets.kr(in_fft);
-	var pitch, hasPitch; // variables for pitch detection
+
+	var in, in_fft, onsets, hainesworth, jensen, pitch, hasPitch;
+	
+	in = SoundIn.ar(0, 0.2);
+	in_fft = FFT(LocalBuf(512), in);
+	
+	onsets = Onsets.kr(in_fft);
+	SendReply.kr(onsets, \onsets);
+	
+	hainesworth = PV_HainsworthFoote.ar(in_fft, 1.0, 0.0, 0.9, 0.5);
+	SendReply.ar(hainesworth, \hainesworth);
+
+	jensen = PV_JensenAndersen.ar(in_fft, threshold:0.05);
+	SendReply.ar(jensen, \jensen);
+	
 	# pitch, hasPitch = Pitch.kr(in,median:9,clar:1); // the # means its an array (here with 2 elements)
 	hasPitch = hasPitch > 0.9; // with 'clar' on, 0 < hasPitch < 1, so this turns it into a boolean for above 0.9
-	//hasPitch.poll;
-	//(1-hasPitch).poll;
-	//var hf = PV_HainsworthFoote.ar(in_fft,1,0,0.9,0.5);
-	//var ja = PV_JensenAndersen.ar(in_fft,threshold:0.05);
 	hasPitch = (1-hasPitch).lag(0.1); // watch for drops from 1 to 0 and smooth out the output
 	SendReply.kr(hasPitch,\pitchOffset);
-	SendReply.kr(onsets, \onset);
-	//SendReply.ar(ja, \ja);
-	// Out.ar(0, );
+
 }).add;
 
 o.remove;
-o = OSCresponderNode(nil, \onset, {
-	arg time, responder, msg;	
-	//("onset" ++ [time, responder, msg]).postln;
-	"onset".postln;
+o = OSCresponderNode(nil, \onsets, {
+	arg time, responder, msg;
+	("Onsets onset at " ++ time).postln;
 }).add;
 
 p.remove;
-p = OSCresponderNode(nil, \pitchOffset, {
-	arg time, responder, msg;	
-	//("hf Onset!!! " ++ [time, responder, msg]).postln;
-	"pitch offset".postln;
-	
+p = OSCresponderNode(nil, \hainesworth, {
+	arg time, responder, msg;
+	("HainesworthFoote onset at " ++ time).postln;
 }).add;
-)
+
+q.remove;
+q = OSCresponderNode(nil, \jensen, {
+	arg time, responder, msg;
+	("JensenAndersen onset at " ++ time).postln;
+}).add;
+
+r.remove;
+r = OSCresponderNode(nil, \pitchOffset, {
+	arg time, responder, msg;
+	("Pitched material ended at " ++ time).postln;
+}).add;
 
 Synth(\hack_listener);
-
-//q.remove;
-//q = OSCresponderNode(nil, \ja, {
-//	arg time, responder, msg;	
-//	//("ja Onset!!! " ++ [time, responder, msg]).postln;
-//	"ja".postln;
-//}).add;
