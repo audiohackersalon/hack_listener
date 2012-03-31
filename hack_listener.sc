@@ -1,9 +1,14 @@
 s = Server.default;
-s.boot;
+//s.boot;
+
+s.waitForBoot({
+~audioInBuf = Buffer.alloc(s,s.sampleRate*10,1);
+~phs = Bus.control(s,1);
+~lastOnset = 0;
 
 SynthDef(\hack_listener, {
-
-	var in, in_fft, onsets, hainesworth, jensen, pitch, hasPitch;
+	
+	var in, in_fft, onsets, hainesworth, jensen, pitch, hasPitch, phs;
 	
 	in = SoundIn.ar(0, 0.2);
 	in_fft = FFT(LocalBuf(512), in);
@@ -18,34 +23,66 @@ SynthDef(\hack_listener, {
 	SendReply.ar(jensen, \jensen);
 	
 	# pitch, hasPitch = Pitch.kr(in,median:9,clar:1); // the # means its an array (here with 2 elements)
-	hasPitch = hasPitch > 0.9; // with 'clar' on, 0 < hasPitch < 1, so this turns it into a boolean for above 0.9
+	//hasPitch.poll;
+	hasPitch = hasPitch > 0.65; // with 'clar' on, 0 < hasPitch < 1, so this turns it into a boolean for above another value
+	//hasPitch.poll;
 	hasPitch = (1-hasPitch).lag(0.1); // watch for drops from 1 to 0 and smooth out the output
 	SendReply.kr(hasPitch,\pitchOffset);
+	
+	phs = Phasor.ar(0,1,0,BufFrames.kr(~audioInBuf));
+	//phs.poll;
+	BufWr.ar(in,~audioInBuf,phs,1);
+	Out.kr(~phs,phs);
 
 }).add;
 
 o.remove;
 o = OSCresponderNode(nil, \onsets, {
 	arg time, responder, msg;
+	~lastOnset = time;
 	("Onsets onset at " ++ time).postln;
 }).add;
 
-p.remove;
-p = OSCresponderNode(nil, \hainesworth, {
-	arg time, responder, msg;
-	("HainesworthFoote onset at " ++ time).postln;
-}).add;
-
-q.remove;
-q = OSCresponderNode(nil, \jensen, {
-	arg time, responder, msg;
-	("JensenAndersen onset at " ++ time).postln;
-}).add;
+//p.remove;
+//p = OSCresponderNode(nil, \hainesworth, {
+//	arg time, responder, msg;
+//	("HainesworthFoote onset at " ++ time).postln;
+//}).add;
+//
+//q.remove;
+//q = OSCresponderNode(nil, \jensen, {
+//	arg time, responder, msg;
+//	("JensenAndersen onset at " ++ time).postln;
+//}).add;
 
 r.remove;
 r = OSCresponderNode(nil, \pitchOffset, {
 	arg time, responder, msg;
+	var length; // time since last onset
 	("Pitched material ended at " ++ time).postln;
+	length = time - ~lastOnset;
+	("Length since last onset: " ++ length).postln;
+	~newBuf.(length);
 }).add;
 
-Synth(\hack_listener);
+~newBuf = {
+	arg length;
+	var buf;
+	length = length * s.sampleRate;
+	buf = Buffer.alloc(s,length,1);
+	~phs.get({
+		| phs |
+		phs.postln;
+		if(((phs-length) >= 0) && (length > (s.sampleRate*0.5)),{
+			~audioInBuf.copyData(buf,0,phs-length,length);
+			buf.plot;
+		});
+	});
+};
+
+~win = SCWindow("Start Listening",Rect(200,100,400,400))
+	.front;
+SCButton(~win,Rect(5,5,390,390))
+	.states_([["Start Listening (Only Click Once)"]])
+	.action_({Synth(\hack_listener,[\inBuf,~audioInBuf]);});
+}); // close of the s.waitForBoot;
