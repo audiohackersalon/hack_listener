@@ -5,6 +5,7 @@ s.waitForBoot({
 ~audioInBuf = Buffer.alloc(s,s.sampleRate*10,1);
 ~phs = Bus.control(s,1);
 ~lastOnset = 0;
+~bufs = [];
 
 SynthDef(\hack_listener, {
 	
@@ -76,6 +77,8 @@ r = OSCresponderNode(nil, \pitchOffset, {
 		if(((phs-length) >= 0) && (length > (s.sampleRate*0.5)),{
 			~audioInBuf.copyData(buf,0,phs-length,length);
 			buf.plot;
+			~bufs = ~bufs ++ [buf];
+			~bufs.postln;
 		});
 	});
 };
@@ -86,3 +89,37 @@ SCButton(~win,Rect(5,5,390,390))
 	.states_([["Start Listening (Only Click Once)"]])
 	.action_({Synth(\hack_listener,[\inBuf,~audioInBuf]);});
 }); // close of the s.waitForBoot;
+
+~player = Task({
+	loop {
+		~bufs.choose.play;
+		rrand(5,10).wait;
+		"played".postln;
+	};
+});
+~player.play;
+~player.stop;
+
+// PATRICK'S ~NEWBUF
+~newBuf = {
+    arg length;
+    var buf, wrapStart, len1, len2;
+    length = length * s.sampleRate;
+    buf = Buffer.alloc(s,length,1);
+    ~phs.get({
+        | phs |
+        phs.postln;
+        if(((phs-length) >= 0) && (length > (s.sampleRate*0.5)),{
+            ~audioInBuf.copyData(buf,0,phs-length,length);
+            buf.plot;
+        });
+        if(phs-length < 0 && length > s.sampleRate*0.5,{
+            ("wrap around").postln;
+            wrapStart = phs-length + s.sampleRate*10;//10 should be replaced with a constant
+            len1 = s.sampleRate - wrapStart - 1; //is minus 1 necessary?
+            len2 = length - len1;
+            ~audioInBuf.copyData(buf,0,wrapStart,len1);  
+           ~audioInBuf.copyData(buf,len1,0,len2);
+        })
+    });
+};
