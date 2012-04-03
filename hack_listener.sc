@@ -67,7 +67,7 @@ r = OSCresponderNode(nil, \pitchOffset, {
 
 ~newBuf = {
 	arg length;
-	var buf;
+	var buf, wrapStart, len1, len2;
 	length = length * s.sampleRate;
 	buf = Buffer.alloc(s,length,1);
 	~phs.get({
@@ -77,6 +77,14 @@ r = OSCresponderNode(nil, \pitchOffset, {
 			~audioInBuf.copyData(buf,0,phs-length,length);
 			buf.plot;
 		});
+		if((phs-length < 0) && (length > (s.sampleRate*0.5)),{
+			("wrap around").postln;
+			wrapStart = phs-length + s.sampleRate*10;//10 should be replaced with a constant
+			len1 = s.sampleRate - wrapStart - 1; //is minus 1 necessary?
+			len2 = length - len1;
+			~audioInBuf.copyData(buf,0,wrapStart,len1);			~audioInBuf.copyData(buf,len1,0,len2);
+			buf.plot;
+		})
 	});
 };
 
