@@ -15,7 +15,6 @@ SynthDef(\hack_listener, {
 	in_fft = FFT(LocalBuf(512), in);
 	
 	onsets = Onsets.kr(in_fft);
-	SendReply.kr(onsets, \onsets);
 	
 	hainesworth = PV_HainsworthFoote.ar(in_fft, 1.0, 0.0, 0.9, 0.5);
 	SendReply.ar(hainesworth, \hainesworth);
@@ -25,9 +24,10 @@ SynthDef(\hack_listener, {
 	
 	# pitch, hasPitch = Pitch.kr(in,median:9,clar:1); // the # means its an array (here with 2 elements)
 	//hasPitch.poll;
-	hasPitch = hasPitch > 0.65; // with 'clar' on, 0 < hasPitch < 1, so this turns it into a boolean for above another value
+	hasPitch = hasPitch > 0.4; // with 'clar' on, 0 < hasPitch < 1, so this turns it into a boolean for above another value
 	//hasPitch.poll;
-	hasPitch = (1-hasPitch).lag(0.1); // watch for drops from 1 to 0 and smooth out the output
+	SendReply.kr(hasPitch,\onsets);
+	hasPitch = 1-hasPitch; // watch for drops from 1 to 0 and smooth out the output
 	SendReply.kr(hasPitch,\pitchOffset);
 	
 	phs = Phasor.ar(0,1,0,BufFrames.kr(~audioInBuf));
@@ -70,64 +70,58 @@ r = OSCresponderNode(nil, \pitchOffset, {
 	arg length;
 	var buf, wrapStart, len1, len2;
 	length = length * s.sampleRate;
-	buf = Buffer.alloc(s,length,1);
 	~phs.get({
 		| phs |
 		phs.postln;
-		if(((phs-length) >= 0) && (length > (s.sampleRate*0.5)),{
-			~audioInBuf.copyData(buf,0,phs-length,length);
-			buf.plot;
-			~bufs = ~bufs ++ [buf];
-			~bufs.postln;
-		});
-		if((phs-length < 0) && (length > (s.sampleRate*0.5)),{
-			("wrap around").postln;
-			wrapStart = phs-length + s.sampleRate*10;//10 should be replaced with a constant
-			len1 = s.sampleRate - wrapStart - 1; //is minus 1 necessary?
+		if(length > (s.sampleRate*0.5),{
+			buf = Buffer.alloc(s,length);
+			if(phs-length < 0,{
+			"wrap around".postln;
+			wrapStart = phs-length + (s.sampleRate*10);//10 should be replaced with a constant
+			len1 = (10*s.sampleRate) - wrapStart; //is minus 1 necessary?
 			len2 = length - len1;
 			~audioInBuf.copyData(buf,0,wrapStart,len1);			~audioInBuf.copyData(buf,len1,0,len2);
-			buf.plot;
-		})
+			//buf.plot;
+			~bufManage.(buf,length);
+		},{
+			~audioInBuf.copyData(buf,0,phs-length,length);
+			//buf.plot;
+			~bufManage.(buf,length);
+			});
+		});
 	});
+};
+
+~bufManage = {
+	arg buf, length;
+	if(~bufs.size > 49,{
+		~bufs.removeAllSuchThat({
+			arg item, i;
+			i == 0;
+		});
+	});
+	~bufs = ~bufs ++ [[buf,length]]; // buffer, length of buffer 
+	~bufs.size.postln;
 };
 
 ~win = SCWindow("Start Listening",Rect(200,100,400,400))
 	.front;
-SCButton(~win,Rect(5,5,390,390))
+SCButton(~win,Rect(5,5,390,100))
 	.states_([["Start Listening (Only Click Once)"]])
 	.action_({Synth(\hack_listener,[\inBuf,~audioInBuf]);});
+SCButton(~win,Rect(5,110,390,100))
+	.states_([["Play a Buffer"]])
+	.action_({
+		if(~bufs.size > 0,{
+			~bufs.choose[0].play;
+		})
+	});
 }); // close of the s.waitForBoot;
 
-~player = Task({
-	loop {
-		~bufs.choose.play;
-		rrand(5,10).wait;
-		"played".postln;
-	};
-});
-~player.play;
-~player.stop;
-
-// PATRICK'S ~NEWBUF
-~newBuf = {
-    arg length;
-    var buf, wrapStart, len1, len2;
-    length = length * s.sampleRate;
-    buf = Buffer.alloc(s,length,1);
-    ~phs.get({
-        | phs |
-        phs.postln;
-        if(((phs-length) >= 0) && (length > (s.sampleRate*0.5)),{
-            ~audioInBuf.copyData(buf,0,phs-length,length);
-            buf.plot;
-        });
-        if(phs-length < 0 && length > s.sampleRate*0.5,{
-            ("wrap around").postln;
-            wrapStart = phs-length + s.sampleRate*10;//10 should be replaced with a constant
-            len1 = s.sampleRate - wrapStart - 1; //is minus 1 necessary?
-            len2 = length - len1;
-            ~audioInBuf.copyData(buf,0,wrapStart,len1);  
-           ~audioInBuf.copyData(buf,len1,0,len2);
-        })
-    });
-};
+//~player = Task({
+//	loop {
+//		~bufs.choose[0].play;
+//		"played".postln;
+//		rrand(5,10).wait;
+//	};
+//});

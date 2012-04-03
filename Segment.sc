@@ -1,0 +1,3 @@
+Segment {
+	var <>buffer, <>length;
+}
